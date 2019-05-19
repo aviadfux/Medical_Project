@@ -14,6 +14,22 @@ def remove_stop_words(query):
     tokens = [word for word in tokenized_words if word not in my_stop_words]
     return ' '.join(tokens)
 
+def num_of_results_per_page(driver, num_results):
+
+    #Click on 'Per page'
+    driver.find_element_by_xpath("// *[ @ id = \"result_action_bar\"] / ul / li[3]").click()
+
+    options = [5,10,20,50,100,200]
+    differ = []
+    [differ.append(option - num_results) for option in options if (option - num_results) >= 0]
+
+    #20 is the defult value of num results
+    if num_results + differ[0] == 20: return
+    li_num = options.index(num_results + differ[0]) + 1
+
+    # Click on the desired num results on page
+    driver.find_element_by_xpath("// *[ @ id = \"display_settings_menu_ps\"] / fieldset / ul / li[%s] / label" % li_num).click()
+
 def create_query_csv(query, results, bestMatch, destination_folder):
     if bestMatch:
         sort = "bestMatch"
@@ -26,11 +42,13 @@ def create_query_csv(query, results, bestMatch, destination_folder):
         for item in results:
             wr.writerow([item, ])
 
-def query_from_server(raw_query, driver, press_button):
+def query_from_server(raw_query, driver, press_button, limmit_results):
     parsed_quey = remove_stop_words(raw_query)
     query = "?term=" + parsed_quey.replace(' ', '+')
 
     driver.get(URL + query)
+
+    num_of_results_per_page(driver, limmit_results)
 
     if press_button:
         driver.find_element_by_link_text('Best match').click()
@@ -51,7 +69,7 @@ def open_chrome_driver():
     options = webdriver.ChromeOptions()
     options.add_argument('--ignore-certificate-errors')
     options.add_argument("--test-type")
-    return webdriver.Chrome(options=options, executable_path=r'C:/Users/User/PycharmProjects/Medical_Project/chromedriver')
+    return webdriver.Chrome(options=options, executable_path=r'C:\Users\AVIADFUX\Desktop\Projects\Medical_Project/chromedriver')
 
 def main():
     #default vals:
@@ -81,9 +99,7 @@ def main():
 
     press_button = best_match
     for num, query in enumerate(queries):
-       # print(query)
-        if num >= limit_results : break
-        results = query_from_server(query, chrome, press_button)
+        results = query_from_server(query, chrome, press_button, limit_results)
         create_query_csv(query, results, best_match, destination_folder)
         press_button = False
 
