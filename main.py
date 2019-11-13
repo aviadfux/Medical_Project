@@ -188,10 +188,10 @@ def get_all_papers(destination_folder):
 
 
 def main():
-    destination_folder = 'C:\\research\\falseMedicalClaims\\examples\\short queries\\pubmed\\CAM\\x_for_y\\to_classify_20_sample2\\'
+    destination_folder = 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\unclassified\\to_classify_20_sample2\\'
     #destination_folder = 'C:\\research\\falseMedicalClaims\\examples\\short queries\\pubmed\\CAM\\x_for_y\\to_classify_20\\'
     #queries_file_name = 'C:\\research\\falseMedicalClaims\\examples\\query files\\x_for_y_queries_sample.csv'
-    queries_file_name = 'C:\\research\\falseMedicalClaims\\examples\\query files\\x_for_y_queries_sample2_1.csv'
+    queries_file_name = 'C:\\research\\falseMedicalClaims\\examples\\query files\\x_for_y_queries_sample2.csv'
 
     get_all_papers(destination_folder)
     return
