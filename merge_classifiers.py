@@ -1,5 +1,7 @@
 import csv
 import os
+from nltk import agreement, interval_distance
+from sklearn.metrics import cohen_kappa_score
 
 from py._xmlgen import raw
 
@@ -309,6 +311,70 @@ def only_strong_classifiers():
                       weights=weights,
                       output_folder='sample_1_2_only_strong_classifiers')
 
+
+def merge_google_labels(dir_name, classifiers):
+    labels = {}
+    for (name, file) in classifiers:
+        path = dir_name + file
+        with open(path, 'r', encoding='utf-8', newline='') as label_file:
+            label_file_dict = csv.DictReader(label_file)
+            for row in label_file_dict:
+                q = row['short query']
+                value = int(row['Google_value'])
+                if q not in labels:
+                    labels[q] = {}
+                    labels[q]['short query'] = q
+                    labels[q][name] = value
+                    if 'query' in row:
+                        labels[q]['long query'] = row['query']
+                else:
+                    assert name not in labels[q]
+                    labels[q][name] = value
+                    if 'query' in row:
+                        assert(labels[q]['long query'] == row['query'])
+    with open(dir_name + 'google_labels_merged.csv', 'w', encoding='utf-8', newline='') as merged:
+        fieldnames = ['short query', 'long query', 'Google']
+        names = [x[0] for x in classifiers]
+        fieldnames.extend(names)
+        merged_writer = csv.DictWriter(merged, fieldnames=fieldnames)
+        merged_writer.writeheader()
+        taskdata = []
+        taskdata_counter = 0
+        for row in labels.values():
+            taskdata_counter+=1
+            barak_label = row['barak']
+            for name in names:
+                if name not in row:
+                    print ('no label for ' + name + ' for query ' + row['short query'])
+                    row[name] = 0
+
+                if barak_label == -1:
+                    if (name in row) and (row[name] > 0):
+                        print('Error')
+                        print(name)
+                        print(row['short query'])
+
+                else:
+                    rating = row[name] if row[name] >  0 else 0
+                    taskdata.append((name, str(taskdata_counter), rating))
+            values = [row[x] for x in names]
+            values.sort()
+            if values[1] == values[0]:
+                row['Google'] = values[0]
+            elif values[1] == values[2]:
+                row['Google'] = values[2]
+            else:
+                row['Google'] = -10
+                print('DISAGREEMENT on ' + row['short query'])
+            merged_writer.writerow(row)
+
+        ratingtask = agreement.AnnotationTask(data=taskdata, distance = interval_distance)
+    print("kappa " + str(ratingtask.kappa()))
+    print("fleiss " + str(ratingtask.multi_kappa()))
+    print("alpha " + str(ratingtask.alpha()))
+    print("scotts " + str(ratingtask.pi()))
+
+
 def old():
     weights = {'Yael': 1.5,'Sigal':1, 'Irit':1, 'Luda':0.75, 'Shlomi':0.75, 'Chavi':1.3}
     secondary_folders  = {'Sigal':'Sigal\\all',
@@ -324,8 +390,50 @@ def old():
                       output_folder='sample_1_2_all')
 
 
+def get_labels(f, fieldname):
+    labels = {}
+    with open(f, 'r', encoding='utf-8', newline='') as label_file:
+        label_file_dict = csv.DictReader(label_file)
+        for row in label_file_dict:
+            q = row['short query']
+            value = int(row[fieldname])
+            labels[q] = 0 if value < 0 else value
+    return labels
+
+def calc_kappa(f1,f2, fieldname):
+    labels1 = get_labels(f1,fieldname)
+    labels2 = {}
+    with open(f2, 'r', encoding='utf-8', newline='') as label_file:
+        label_file_dict = csv.DictReader(label_file)
+        for row in label_file_dict:
+            q = row['short query']
+            row_value = int(row[fieldname])
+            value = 0 if row_value < 0 else row_value
+            assert q in labels1
+            labels2[q] = value
+    labeler1 = []
+    labeler2=[]
+    for q in labels1.keys():
+        labeler1.append(labels1[q])
+        labeler2.append(labels2[q])
+    print(cohen_kappa_score(labeler1, labeler2, weights='quadratic'))
+
+
 def main():
-    merge_all()
+
+    merge_google_labels('C:\\research\\falseMedicalClaims\\IJCAI\\classification\\Google labels\\',
+                        [('irit','google labels  irit.csv'),
+                         ('sigal','google labels_sigal.csv'),
+                         ('barak','google labels barak.csv')])
+    return
+    #merge_all()
+    calc_kappa('C:\\research\\falseMedicalClaims\\IJCAI\\classification\\cochrane\\cochrane_no_label - irit.csv',
+               'C:\\research\\falseMedicalClaims\\IJCAI\\classification\\cochrane\\cochrane_no_label_sigal.csv',
+               'label')
+
+    calc_kappa('C:\\research\\falseMedicalClaims\\IJCAI\\classification\\Google labels\\google labels  irit.csv',
+               'C:\\research\\falseMedicalClaims\\IJCAI\\classification\\Google labels\\google labels_sigal.csv',
+               'Google_value')
 
 
 if __name__ == '__main__':

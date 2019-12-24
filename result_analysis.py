@@ -1,4 +1,6 @@
 import csv
+import os
+
 from numpy import mean
 
 
@@ -63,8 +65,67 @@ def sample_size_to_accuracy(sample_size_file, result_file, output_filename, acc_
     years_to_stats = group_stats_by_key(stats, rels)
     gen_output_file(output_filename, years_to_stats,  'rel')
 
+def count_all_papers(destination_folder):
+    num_files = {}
+    num_relevant = {}
+    total = 0
+    relevant = 0
+    print('title,num')
+    for sub_folder_name in os.listdir(destination_folder):
+        if sub_folder_name.endswith('.csv'):
+            continue
+        sub_folder = destination_folder+'\\'+sub_folder_name
+        num_files[sub_folder_name] = 0
+        num_relevant[sub_folder_name] = 0
+        for file_name in os.listdir(sub_folder):
+            with open(sub_folder + '\\' + file_name, 'r', encoding='utf-8', newline='') as queries_csv:
+                reader = csv.DictReader(queries_csv)
+                for row in reader:
+                    num_files[sub_folder_name] +=1
+                    total += 1
+                    if int(row['category']) > 0:
+                        relevant += 1
+                        num_relevant[sub_folder_name] +=1
+
+    for q,num in num_files.items():
+            print(q + ', '+ str(num))
+    print ('total: ' + str(total))
+    print('relevant: ' + str(relevant))
+    print('extracted: ' + str(total - relevant))
+    print('mean  papers in query: ' + str(mean(list(num_files.values()))))
+    print('mean  relevant papers for query: '+ str(mean(list(num_relevant.values()))))
+
+
+def simple_count(destination_folder):
+    num_files = {}
+    num_relevant = {}
+    total = 0
+    print('title,num')
+    for sub_folder_name in os.listdir(destination_folder):
+        if sub_folder_name.endswith('.csv'):
+            continue
+        sub_folder = destination_folder+'\\'+sub_folder_name
+        num_files[sub_folder_name] = 0
+        num_relevant[sub_folder_name] = 0
+        for file_name in os.listdir(sub_folder):
+            print(sub_folder + '\\' + file_name)
+            with open(sub_folder + '\\' + file_name, 'r', encoding='utf-8', newline='') as queries_csv:
+
+                reader = csv.DictReader(queries_csv)
+                for row in reader:
+                    num_files[sub_folder_name] +=1
+                    total += 1
+
+    for q,num in num_files.items():
+            print(q + ', '+ str(num))
+    print ('total: ' + str(total))
+
+
 
 def main():
+    simple_count('C:\\research\\falseMedicalClaims\\classifieres\\luda\\to_classify_20_sample2')
+    #count_all_papers('C:\\research\\falseMedicalClaims\ECAI\examples\\classified\\all_equal_weights')
+    return
     reports_folder = 'C:\\research\\falseMedicalClaims\\ECAI\\model input\\Yael\\by_group\\reports\\'
     results_filename = reports_folder + 'group_features_by_stance_citation_1_report'
 

@@ -187,8 +187,66 @@ def get_all_papers(destination_folder):
     print ('total: ' + str(total))
 
 
+def gen_papers(queries_file_name, destination_folder):
+    queries = []
+    r = 0
+
+    with open(queries_file_name, 'r', encoding='utf-8', newline='') as queries_csv:
+        reader = csv.DictReader(queries_csv)
+        for row in reader:
+            queries.append(row)
+
+    press_button = True
+    all_qs = []
+    for i in range(0, len(queries)):
+        r += 1
+        parsed_query = queries[i]['short query']
+        # parsed_query = remove_stop_words(queries[i]['short query'])
+        # print(parsed_query)
+        # queries[i]['short query'] = parsed_query
+        folder_name = queries[i]['long query']
+        query_dir = destination_folder + folder_name
+        if os.path.exists(query_dir):
+            continue
+        date = queries[i]['date']
+        review_year = date.split('.')[2].strip()
+        clinical = try_to_read_from_server(r, parsed_query, review_year, 'clinical')
+        rev = try_to_read_from_server(r, parsed_query, review_year, 'rev')
+        all_qs.extend(clinical)
+        all_qs.extend(rev)
+        all = []
+        if len(all_qs) < 20:
+            all = try_to_read_from_server(r, parsed_query, review_year, 'all')
+            all_qs.extend(all)
+        # filtered_results = filter_results(results, query[1], limit_results)
+
+        os.mkdir(query_dir)
+        create_query_csv(parsed_query, clinical, "clinical", query_dir)
+        create_query_csv(parsed_query, rev, "rev", query_dir)
+        exclude = rev + clinical
+        create_query_csv(parsed_query, all, "rest", query_dir, exclude)
+
+        press_button = False
+
+    with open(destination_folder + 'queries.csv', 'w', encoding='utf-8', newline='') as out:
+        fieldnames = queries[0].keys()
+        writer = csv.DictWriter(out, fieldnames=fieldnames)
+        writer.writeheader()
+        for q in queries:
+            writer.writerow(q)
+
+    create_query_csv('all', all_qs, "all", destination_folder)
+
+
 def main():
-    destination_folder = 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\unclassified\\to_classify_20_sample2\\'
+    q_file = 'C:\\research\\falseMedicalClaims\\IJCAI\\classification\\irit_sigal\\queries.csv'
+    destination_folder = 'C:\\research\\falseMedicalClaims\\IJCAI\\classification\\irit_sigal\\papers\\'
+    #gen_papers(q_file,destination_folder)
+    get_all_papers(destination_folder)
+    return
+
+
+    #destination_folder = 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\unclassified\\to_classify_20_sample2\\'
     #destination_folder = 'C:\\research\\falseMedicalClaims\\examples\\short queries\\pubmed\\CAM\\x_for_y\\to_classify_20\\'
     #queries_file_name = 'C:\\research\\falseMedicalClaims\\examples\\query files\\x_for_y_queries_sample.csv'
     queries_file_name = 'C:\\research\\falseMedicalClaims\\examples\\query files\\x_for_y_queries_sample2.csv'
