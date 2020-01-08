@@ -176,7 +176,9 @@ def get_all_papers(destination_folder):
         sub_folder = destination_folder+'\\'+sub_folder_name
         num_files[sub_folder_name] = 0
         for file_name in os.listdir(sub_folder):
-            with open(sub_folder + '\\' + file_name, 'r', encoding='utf-8', newline='') as queries_csv:
+            if not file_name.endswith('.csv'):
+                continue
+            with open(sub_folder + '\\' + file_name, 'r', newline='') as queries_csv:
                 reader = csv.DictReader(queries_csv)
                 for row in reader:
                     #all.append(row)
@@ -239,9 +241,11 @@ def gen_papers(queries_file_name, destination_folder):
 
 
 def main():
-    q_file = 'C:\\research\\falseMedicalClaims\\IJCAI\\classification\\irit_sigal\\queries.csv'
-    destination_folder = 'C:\\research\\falseMedicalClaims\\IJCAI\\classification\\irit_sigal\\papers\\'
-    #gen_papers(q_file,destination_folder)
+    q_file = 'C:\\research\\falseMedicalClaims\\IJCAI\\classification\\irit_sigal\\queries2.csv'
+    #destination_folder = 'C:\\research\\falseMedicalClaims\\IJCAI\\classification\\irit_sigal\\papers2\\'
+
+   # gen_papers(q_file,destination_folder)
+    destination_folder = 'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\\pos_neg\\\Audrie\\annotated\\'
     get_all_papers(destination_folder)
     return
 

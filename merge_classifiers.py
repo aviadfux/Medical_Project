@@ -1,6 +1,8 @@
 import csv
 import os
-from nltk import agreement, interval_distance
+import random
+
+from nltk import agreement, interval_distance, custom_distance
 from sklearn.metrics import cohen_kappa_score
 
 from py._xmlgen import raw
@@ -184,7 +186,10 @@ def get_opinion_categories(opinion_file_name):
     with open(opinion_file_name, 'r', encoding='utf-8', newline='') as opinion_csv:
         opinion_reader = csv.DictReader(opinion_csv)
         for row in opinion_reader:
-            opinion_categories[row['document_url']] = row
+            if 'document_url' not in row:
+                opinion_categories[row['url']] = row
+            else:
+                opinion_categories[row['document_url']] = row
     return opinion_categories
 
 
@@ -222,6 +227,22 @@ def get_all_opinions(url, classifications):
         opinion = -1 if raw_opinion == -2 else raw_opinion
         opinions[classifier] = opinion
     return opinions
+
+
+def plurality(opinions):
+    counter = {-1:0,1:0,2:0,2:0,3:0,4:0,5:0}
+    for classifier, opinion in opinions.items():
+        opinion = -1 if opinion == -2 else opinion
+        counter[opinion] += 1
+    sorted_stance = sorted(counter.items(), key=lambda kv: kv[1], reverse=True)
+#    if sorted_stance[0][1] <2:
+#        return -1
+    if sorted_stance[0][1] == sorted_stance[1][1]:
+        if sorted_stance[0][0] > sorted_stance[1][0]:
+            return sorted_stance[0][0]
+        else:
+            return sorted_stance[1][0]
+    return sorted_stance[0][0]
 
 def get_majority(opinions, weights):
     counter = {-1:0,1:0,2:0,2:0,3:0,4:0,5:0}
@@ -368,7 +389,7 @@ def merge_google_labels(dir_name, classifiers):
                 print('DISAGREEMENT on ' + row['short query'])
             merged_writer.writerow(row)
 
-        ratingtask = agreement.AnnotationTask(data=taskdata, distance = interval_distance)
+    ratingtask = agreement.AnnotationTask(data=taskdata, distance = interval_distance)
     print("kappa " + str(ratingtask.kappa()))
     print("fleiss " + str(ratingtask.multi_kappa()))
     print("alpha " + str(ratingtask.alpha()))
@@ -392,13 +413,15 @@ def old():
 
 def get_labels(f, fieldname):
     labels = {}
-    with open(f, 'r', encoding='utf-8', newline='') as label_file:
+    with open(f, 'r', newline='') as label_file:
         label_file_dict = csv.DictReader(label_file)
         for row in label_file_dict:
-            q = row['short query']
-            value = int(row[fieldname])
-            labels[q] = 0 if value < 0 else value
+            q = row['query']
+            if row[fieldname]:
+                value = int(row[fieldname])
+                labels[q] = 0 if value < 0 else value
     return labels
+
 
 def calc_kappa(f1,f2, fieldname):
     labels1 = get_labels(f1,fieldname)
@@ -406,21 +429,305 @@ def calc_kappa(f1,f2, fieldname):
     with open(f2, 'r', encoding='utf-8', newline='') as label_file:
         label_file_dict = csv.DictReader(label_file)
         for row in label_file_dict:
-            q = row['short query']
-            row_value = int(row[fieldname])
-            value = 0 if row_value < 0 else row_value
-            assert q in labels1
-            labels2[q] = value
+            url = row['query']
+            if row[fieldname]:
+                row_value = int(row[fieldname])
+                value = 0 if row_value < 0 else row_value
+                if url in labels1:
+                    labels2[url] = value
+            #assert url in labels1
+
     labeler1 = []
     labeler2=[]
-    for q in labels1.keys():
+    err = 0
+    acc = 0
+    cls_to_lbl = {1:1,2:1,3:3,4:3,5:5}
+    for q in labels2.keys():
         labeler1.append(labels1[q])
         labeler2.append(labels2[q])
-    print(cohen_kappa_score(labeler1, labeler2, weights='quadratic'))
+        cls1 = cls_to_lbl[labels1[q]]
+        cls2 = cls_to_lbl[labels2[q]]
+        acc += int(cls1==cls2)
+        err += abs(labels1[q] - labels2[q])
+    print('mae=' + str(err/len(labels2)))
+    print('acc=' + str(acc/len(labels2)))
+    print('kappa='+str(cohen_kappa_score(labeler1, labeler2, weights='quadratic')))
+
+
+def merge_classifiers_by_query_file(queries_file, classifier_folders, output_folder, exclude_ir= True):
+    weights = {x:1 for x in classifier_folders.keys()}
+    with open(queries_file, 'r', encoding='utf-8', newline='') as queries_csv:
+        queries = csv.DictReader(queries_csv)
+        for row in queries:
+            query_folder_name = row['query']
+            print(row['query'])
+            opinion_folders = {x: y + '\\' +query_folder_name + '\\' for x,y in classifier_folders.items()}
+            opinions = {}
+            for name, folder in opinion_folders.items():
+                if not os.path.exists(folder):
+                    continue
+                for queries_file_name in os.listdir(folder):
+                    if not queries_file_name.endswith('.csv'):
+                        continue
+                    if not queries_file_name in opinions:
+                        opinions[queries_file_name] = {}
+                    annotations = get_opinion_categories(folder+queries_file_name)
+                    for url, row in annotations.items():
+                        if not row['category']:
+                            continue
+                        category = int(row['category'].strip())
+                        if url not in opinions[queries_file_name]:
+                            opinions[queries_file_name][url] = {}
+                        opinions[queries_file_name][url][name] = category
+            if not opinions.items():
+                print('stop')
+            for f_name, f_opinions in opinions.items():
+                file_content = []
+                for url , categories in f_opinions.items():
+                    majority_vote = plurality(categories)
+                    #majority_vote = get_majority(categories, weights)
+                    if majority_vote > 0:
+                        file_content.append({'document_url': url, 'category': majority_vote})
+                if not os.path.exists(output_folder + '\\' + query_folder_name):
+                    os.mkdir(output_folder + '\\' + query_folder_name)
+                gen_output_file(output_folder + '\\' + query_folder_name + '\\merged_'+f_name, file_content)
+
+
+def compute_alpha(queries_file, classifier_folders, mode ='relevant'):
+    taskdata = []
+    taskdata_counter = 0
+    with open(queries_file, 'r', encoding='utf-8', newline='') as queries_csv:
+        queries = csv.DictReader(queries_csv)
+        for row in queries:
+            query_folder_name = row['query']
+            opinion_folders = {x: y  +'\\'+query_folder_name + '\\' for x,y in classifier_folders.items()}
+            for name, folder in opinion_folders.items():
+                if not os.path.exists(folder):
+                    continue
+                for queries_file_name in os.listdir(folder):
+                    if not queries_file_name.endswith('.csv'):
+                        continue
+                    annotations = get_opinion_categories(folder+queries_file_name)
+                    for url, row in annotations.items():
+                        if not row['category']:
+                            print(name)
+                            print(row)
+
+                            continue
+                        category = int(row['category'].strip())
+                        if mode == 'relevant' and category < 0:
+                            continue
+                        taskdata.append((name, url, category))
+
+    ratingtask = agreement.AnnotationTask(data=taskdata, distance = my_interval_distance)
+#    ratingtask = agreement.AnnotationTask(data=taskdata, distance = interval_distance)
+    print("alpha " + str(ratingtask.alpha()))
+
+def compute_alpha_old(primary_labler, classifier_folders, primary_folder, secondary_folders, mode ='relevant'):
+    taskdata = []
+    taskdata_counter = 0
+    for query_folder_name in os.listdir(classifier_folders + primary_folder):
+        if query_folder_name.endswith('.csv'):
+            continue
+        query_primary_full_path = classifier_folders + primary_folder + query_folder_name
+        opinion_folders = {x: classifier_folders + y  +'\\'+query_folder_name + '\\' for x,y in secondary_folders.items()}
+        for queries_file_name in os.listdir(query_primary_full_path):
+            first_opinion_categories = get_opinion_categories(query_primary_full_path + '\\' + queries_file_name)
+            other_classifications = get_opinions(opinion_folders=opinion_folders, queries_file_name=queries_file_name)
+            for url, row in first_opinion_categories.items():
+                taskdata_counter +=1
+                first_opinion_category = int(row['category'].strip())
+                opinions = get_all_opinions(url, other_classifications)
+                opinions[primary_labler] = first_opinion_category
+                if mode == 'relevant':
+                    ratings = { x:y for x,y in opinions.items() if y > 0}
+                else:
+                    ratings = opinions
+                if len(ratings.keys()) <2:
+                    continue
+                for name, value in ratings.items():
+                    taskdata.append((name, str(taskdata_counter), value))
+#                assert('Sigal' in opinions and 'Yael' in opinions)
+
+    ratingtask = agreement.AnnotationTask(data=taskdata, distance = my_interval_distance)
+#    ratingtask = agreement.AnnotationTask(data=taskdata, distance = interval_distance)
+    print("alpha " + str(ratingtask.alpha()))
+
+
+def my_interval_distance(label1, label2):
+    if label1 > 0 and label2 > 0:
+        return pow(label1 - label2, 2)
+    elif label1 < 0 and label2 < 0:
+        return 0
+    return 0.5
+
+def gen_custom_file():
+    for i in range(1, 6):
+        for j in range(1, 6):
+            print(str(i) + '\t' + str(j) + '\t' + str(pow(i - j, 2)))
+        print(str(i) + '\t-1\t1')
+        print('-1\t1\t'+str(i))
+
+
+def merge_all_ijcai():
+    classifier_folders = {'Audrie':'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\pos_neg\\Audrie\\annotated',
+                          'Nechama': 'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\pos_neg\\Nechama\\annotated',
+                          'Sapir':'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\pos_neg\\Sapir\\annotated',
+                          'Sigal': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Sigal\\all',
+                          'Irit': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Irit\\all',
+                          'Shlomi': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Shlomi\\to_classify_20_sample2',
+                          'Chavi': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Chavi\\all',
+                          'Yael': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Yael\\sample1_and_2\\'}
+    merge_classifiers_by_query_file(
+        queries_file='C:\\research\\falseMedicalClaims\\IJCAI\\query files\\queries only.csv',
+        classifier_folders=classifier_folders,
+        output_folder='C:\\research\\falseMedicalClaims\\IJCAI\\merged_annotations\\all_exp\\',
+        exclude_ir=False)
+
+
+#
+#    merge_classifiers_by_query_file(queries_file='C:\\research\\falseMedicalClaims\\IJCAI\\query files\\pos_neg_queries.csv',
+#                                    classifier_folders=classifier_folders,
+#                                    output_folder = 'C:\\research\\falseMedicalClaims\\IJCAI\\merged_annotations\pos_neg\\',
+#                                    exclude_ir=False)
+
+
+def get_md_labels(file):
+    labels = {}
+    with open(file, 'r', encoding='utf-8', newline='') as queries_csv:
+        reader = csv.DictReader(queries_csv)
+        for row in reader:
+            url = row['url'].strip()
+            value = row['value_label']
+            if value.isdigit():
+                labels[url] = int(value)
+    return labels
+
+
+def get_cochrane_labels(md_file, queries_file, classifier_folders, output_file):
+    md_labels = get_md_labels(md_file)
+    labels = []
+    with open(queries_file, 'r', encoding='utf-8', newline='') as queries_csv:
+        queries = csv.DictReader(queries_csv)
+        for row in queries:
+            query_folder_name = row['long query']
+            url = row ['url'].strip()
+            pubmed_url = row['pubmed'].strip()
+            entry = {'query': query_folder_name, 'url': url, 'pubmed': pubmed_url}
+            opinion_folders = {x: y + '\\' +query_folder_name + '\\' for x,y in classifier_folders.items()}
+            opinions = {}
+            for name, folder in opinion_folders.items():
+                if name in entry:
+                    continue
+                if not os.path.exists(folder):
+                    continue
+                for queries_file_name in os.listdir(folder):
+                    if not queries_file_name.endswith('.csv'):
+                        continue
+                    if not queries_file_name in opinions:
+                        opinions[queries_file_name] = {}
+                    annotations = get_opinion_categories(folder+queries_file_name)
+                    if pubmed_url in annotations.keys():
+                        entry[name] = annotations[pubmed_url]['category']
+            labels.append(entry)
+
+        with open(output_file, 'w', encoding='utf-8', newline='') as out:
+            fieldnames = ['query', 'url', 'pubmed','MD']
+            fieldnames.extend(list(classifier_folders.keys()))
+            writer = csv.DictWriter(out, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in labels:
+                if row['url'] in md_labels:
+                    row['MD'] = md_labels[row['url']]
+                writer.writerow(row)
+
+
+def cmp_merge(queries_file, folder1, folder2):
+    with open(queries_file, 'r', encoding='utf-8', newline='') as queries_csv:
+        queries = csv.DictReader(queries_csv)
+        for row in queries:
+            # long query folder
+            query_folder_name1 = folder1 + row['long query']
+            query_folder_name2 = folder2 + row['long query']
+            if not os.path.exists(query_folder_name1):
+                continue
+            for queries_file_name in os.listdir(query_folder_name1):
+                if not queries_file_name.endswith('.csv'):
+                    continue
+                annotations1 = get_opinion_categories(query_folder_name1 + '\\' + queries_file_name)
+                annotations2 = get_opinion_categories(query_folder_name2 + '\\merged_' + queries_file_name)
+                for url, row in annotations1.items():
+                    if not row['category']:
+                        continue
+                    category1 = int(row['category'].strip())
+                    if url not in annotations2:
+                        if  category1 > 0:
+                            print(queries_file_name)
+                            print(url)
+                            print(category1)
+                        continue
+                    entry2 = annotations2[url]
+                    if 'category' not in entry2:
+                        print(queries_file_name)
+                        print(url)
+                        print(category1)
+                        continue
+                    category2 = annotations2[url]['category']
+                    if str(category1) != str(category2):
+                        print(queries_file_name)
+                        print(url)
+                        print(category1)
+                        print(category2)
+
 
 
 def main():
+    queries_file = 'C:\\research\\falseMedicalClaims\\IJCAI\\query files\\queries_ijcai_pos_added.csv'
+    merge_all_ijcai();
+    cmp_merge(queries_file,  'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\all_equal_weights\\', 'C:\\research\\falseMedicalClaims\\IJCAI\merged_annotations\\all\\')
 
+    return
+    md_file ='C:\\research\\falseMedicalClaims\\IJCAI\\annotators\\Ruthi\\Cochrane_Ruthy.csv'
+
+    classifier_folders = {'Audrie': 'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\pos_neg\\Audrie\\annotated',
+                          'Nechama': 'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\pos_neg\\Nechama\\annotated',
+                          'Sapir': 'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\pos_neg\\Sapir\\annotated',
+                          'Sigal': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Sigal\\all',
+                          'Irit': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Irit\\all',
+                          'Shlomi': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Shlomi\\to_classify_20_sample2',
+                          'Chavi': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Chavi\\all',
+                          'Yael': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Yael\\sample1_and_2\\'}
+    output_file ='C:\\research\\falseMedicalClaims\\IJCAI\\annotators\\cmp.csv'
+
+
+    calc_kappa('C:\\research\\falseMedicalClaims\\IJCAI\\annotators\\Ruthi\\0_all_clear_queries.csv',
+           'C:\\research\\falseMedicalClaims\\IJCAI\\model input\ecai_paste\\labels_2.csv',
+           'value_label')
+   # return
+    get_cochrane_labels(md_file, queries_file, classifier_folders, output_file)
+    return
+
+    calc_kappa('C:\\research\\falseMedicalClaims\\IJCAI\\annotators\\Ruthi\\Cochrane_Ruthy.csv',
+               'C:\\research\\falseMedicalClaims\\IJCAI\\model input\ecai_paste\\labels.csv',
+               'value_label')
+    return
+
+
+    compute_alpha(queries_file='C:\\research\\falseMedicalClaims\\IJCAI\\query files\\queries only.csv',
+                  classifier_folders=classifier_folders)
+
+    return
+    secondary_folders  = {'Sigal':'Sigal\\all',
+                          'Irit':'Irit\\all',
+                          'Luda':'Luda\\to_classify_20_sample2  ',
+                          'Shlomi':'Shlomi\\to_classify_20_sample2',
+                          'Chavi':'Chavi\\sample1_2'}
+#TODO: gen a list of queries from yaels folder and the ijcai annotators
+    compute_alpha_old(primary_labler='Yael',
+                      classifier_folders='C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\',
+                      primary_folder='Yael\\sample1_and_2\\',
+                      secondary_folders=secondary_folders)
+    return
     merge_google_labels('C:\\research\\falseMedicalClaims\\IJCAI\\classification\\Google labels\\',
                         [('irit','google labels  irit.csv'),
                          ('sigal','google labels_sigal.csv'),
