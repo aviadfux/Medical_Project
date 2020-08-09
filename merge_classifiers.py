@@ -536,35 +536,6 @@ def merge_classifiers_by_query_file(queries_file, classifier_folders, output_fol
                 gen_output_file(output_folder + '\\' + query_folder_name + '\\merged_'+f_name, file_content)
 
 
-def compute_alpha(queries_file, classifier_folders, mode ='relevant'):
-    taskdata = []
-    taskdata_counter = 0
-    with open(queries_file, 'r', encoding='utf-8', newline='') as queries_csv:
-        queries = csv.DictReader(queries_csv)
-        for row in queries:
-            query_folder_name = row['query']
-            opinion_folders = {x: y  +'\\'+query_folder_name + '\\' for x,y in classifier_folders.items()}
-            for name, folder in opinion_folders.items():
-                if not os.path.exists(folder):
-                    continue
-                for queries_file_name in os.listdir(folder):
-                    if not queries_file_name.endswith('.csv'):
-                        continue
-                    annotations = get_opinion_categories(folder+queries_file_name)
-                    for url, row in annotations.items():
-                        if not row['category']:
-                            print(name)
-                            print(row)
-
-                            continue
-                        category = int(row['category'].strip())
-                        if mode == 'relevant' and category < 0:
-                            continue
-                        taskdata.append((name, url, category))
-
-    ratingtask = agreement.AnnotationTask(data=taskdata, distance = my_interval_distance)
-#    ratingtask = agreement.AnnotationTask(data=taskdata, distance = interval_distance)
-    print("alpha " + str(ratingtask.alpha()))
 
 def compute_alpha_old(primary_labler, classifier_folders, primary_folder, secondary_folders, mode ='relevant'):
     taskdata = []
@@ -589,6 +560,9 @@ def compute_alpha_old(primary_labler, classifier_folders, primary_folder, second
                 if len(ratings.keys()) <2:
                     continue
                 for name, value in ratings.items():
+                    cls_name = name
+                    if name.endswith('2'):
+                        cls_name = name[:-1]
                     taskdata.append((name, str(taskdata_counter), value))
 #                assert('Sigal' in opinions and 'Yael' in opinions)
 
@@ -597,12 +571,93 @@ def compute_alpha_old(primary_labler, classifier_folders, primary_folder, second
     print("alpha " + str(ratingtask.alpha()))
 
 
+def compute_alpha(queries_file, classifier_folders):
+    q_to_cls = {}
+    taskdata = []
+    taskdata_counter = 0
+    with open(queries_file, 'r', encoding='utf-8', newline='') as queries_csv:
+        queries = csv.DictReader(queries_csv)
+        for row in queries:
+            query_folder_name = row['long query']
+            label_url = row['pubmed']
+            print(row['long query'])
+            opinion_folders = {x: y + '\\' +query_folder_name + '\\' for x,y in classifier_folders.items()}
+            opinions = {}
+            for name, folder in opinion_folders.items():
+                if not os.path.exists(folder):
+                    continue
+                for queries_file_name in os.listdir(folder):
+                    if not queries_file_name.endswith('.csv'):
+                        continue
+                    if not queries_file_name in opinions:
+                        opinions[queries_file_name] = {}
+                    annotations = get_opinion_categories(folder+queries_file_name)
+                    for url, row in annotations.items():
+                        if url ==  label_url:
+                            if not row['category']:
+                                continue
+                            if not query_folder_name in q_to_cls:
+                                q_to_cls[query_folder_name] = {}
+                            cls_name = name[:-1] if name.endswith('2') else name
+                            category = int(row['category'].strip())
+                            q_to_cls[query_folder_name][cls_name] = category
+                            if category > 0:
+                                taskdata_counter +=1
+                                taskdata.append((cls_name, url, category))
+
+    ratingtask = agreement.AnnotationTask(data=taskdata, distance = my_interval_distance)
+    print("alpha " + str(ratingtask.alpha()))
+    for query, opinions in q_to_cls.items():
+        counter = {1: 0, 2: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+        for classifier, opinion in opinions.items():
+            counter[opinion] += 1
+        sorted_stance = sorted(counter.items(), key=lambda kv: kv[1], reverse=True)
+        if sorted_stance[0][1] == sorted_stance[1][1]:
+            print(query)
+            print(opinions)
+
+
+
+   # print("fleiss " + str(ratingtask.multi_kappa()))
+
+
+def plurality_old(opinions):
+    counter = {1: 0, 2: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    for classifier, opinion in opinions.items():
+        if opinion > 0:
+            counter[opinion] += 1
+    sorted_stance = sorted(counter.items(), key=lambda kv: kv[1], reverse=True)
+    if sorted_stance[0][0] == sorted_stance[1][0]:
+        return sorted_stance[1][0]
+    else:
+        return sorted_stance[0][0]
+
+
+
+def ordinal_distnace(label1, label2):
+    assert (label1 > 0 and label2 > 0)
+    distance = 0
+    l1 = min(label1,label2)
+    l2 = max(label1, label2)
+    for i in range(l1, l2+1):
+        distance += i
+    distance -= (label2+label2)/2
+    return pow(distance, 2)
+#    if label1 > 0 and label2 > 0:
+#        return pow(label1 - label2, 2)
+#    elif label1 < 0 and label2 < 0:
+#        return 0
+#    return 0.5
+
+
 def my_interval_distance(label1, label2):
-    if label1 > 0 and label2 > 0:
-        return pow(label1 - label2, 2)
-    elif label1 < 0 and label2 < 0:
-        return 0
-    return 0.5
+    assert (label1 > 0 and label2 > 0)
+    l1 = min(label1, label2)
+    l2 = max(label1, label2)
+    if ((l1 ==3 and l2 ==4) or (l1==1 and l2 == 2)):
+        #return pow(0.5, 2)
+        return 0.25
+    return pow(label1 - label2, 2)
 
 def gen_custom_file():
     for i in range(1, 6):
@@ -740,8 +795,69 @@ def cmp_merge(queries_file, folder1, folder2):
                         print(folder2 + ':' + str(category2))
 
 
+def count_ir(primary_folder):
+    counter = 0
+    for long_query in os.listdir(primary_folder):
+        if not os.path.isdir(primary_folder + '\\' + long_query):
+            continue
+        for queries_file in os.listdir(primary_folder+'\\'+long_query):
+            if not queries_file.endswith('csv'):
+                continue
+            with open(primary_folder+'\\'+long_query+'\\'+queries_file, 'r', newline='') as queries_csv:
+                queries = csv.DictReader(queries_csv)
+                for row in queries:
+                    if not row['category']:
+                        continue
+                    category = int(row['category'])
+                    if category < 0:
+                        counter +=1
+    return counter
+
+def get_ir_stats():
+    classifier_folders = {'Audrie': 'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\pos\\Audrie\\annotated',
+                          'Nechama': 'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\pos\\Nechama\\annotated',
+                          'Sapir': 'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\pos\\Sapir\\annotated',
+                          'Irit':'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\\irit\\papers',
+                         # 'Sigal': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Sigal\\all',
+                          'Sigal': 'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\\sigal\\pos',
+                          #'Irit': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Irit\\all',
+                          'Shlomi': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Shlomi\\to_classify_20_sample2',
+                          #'Chavi': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Chavi\\all',
+                          'Chavi':'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\\Chavi\\papers_is',
+                          'Yael': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Yael\\sample1_and_2\\',
+                          'Yael2': 'C:\\research\\falseMedicalClaims\IJCAI\\annotators\\Yael\\papers_is_Yael'
+                          }
+    for cls, folder in classifier_folders.items():
+        stats = count_ir(folder)
+        print(cls + ' ir stats ' + str(stats))
+
+def ijcai_alpha():
+
+    classifier_folders = {'Audrie': 'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\pos_neg\\Audrie\\annotated',
+                          'Nechama': 'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\\pos_neg\\Nechama\\annotated',
+                          'Sapir': 'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\\pos_neg\\Sapir\\annotated',
+                          'Sigal': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Sigal\\all',
+                          'Irit': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Irit\\all',
+                          'Chavi2': 'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\\Chavi\\all',
+                          'Shlomi': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Shlomi\\to_classify_20_sample2',
+                          'Chavi': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Chavi\\all',
+                          'Yael': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Yael\\sample1_and_2\\',
+                          'Irit2': 'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\\irit\\papers\\',
+                          'Sigal2': 'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\\sigal\\papers\\',
+                          'Yael2': 'C:\\research\\falseMedicalClaims\IJCAI\\annotators\\Yael\\papers_is_Yael'
+
+                                                    }
+#    compute_alpha(queries_file='C:\\research\\falseMedicalClaims\\IJCAI\\query files\\queries_ijcai_all_added.csv',
+#                  classifier_folders=classifier_folders)
+    compute_alpha(queries_file='C:\\research\\falseMedicalClaims\\IJCAI\\query files\\queries_ijcai_pos_neg_added.csv',
+                  classifier_folders=classifier_folders)
 
 def main():
+    #get_ir_stats()
+    print(count_ir('C:\\research\\falseMedicalClaims\\IJCAI\merged_annotations\\non\\'))
+    return
+    ijcai_alpha()
+    return
     merge_all_pos_neg()
     #merge_all2()
     #return

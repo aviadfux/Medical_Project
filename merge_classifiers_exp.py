@@ -170,6 +170,20 @@ def get_majority_vote_from_all(opinions):
     return  sorted_opinions[0]
 
 
+
+
+def plurality_old(opinions):
+    counter = {1: 0, 2: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    for classifier, opinion in opinions.items():
+        if opinion > 0:
+            counter[opinion] += 1
+    sorted_stance = sorted(counter.items(), key=lambda kv: kv[1], reverse=True)
+    if sorted_stance[0][0] == sorted_stance[1][0]:
+        return sorted_stance[1][0]
+    else:
+        return sorted_stance[0][0]
+
+
 def get_majority_vote(first_opinion, second_opinion, third_opinion):
     if first_opinion == third_opinion:
         return first_opinion
@@ -230,13 +244,15 @@ def get_all_opinions(url, classifications):
     return opinions
 
 
-def get_majority(opinions, weights):
-    counter = {-1:0,1:0,2:0,2:0,3:0,4:0,5:0}
+def get_majority_exp(opinions, weights):
+    counter = {1: 0, 2: 0, 2: 0, 3: 0, 4: 0, 5: 0}
     for classifier, opinion in opinions.items():
-        opinion = -1 if opinion == -2 else opinion
-        counter[opinion] +=weights[classifier]
+        if opinion > 0:
+            counter[opinion] += weights[classifier]
     sorted_stance = sorted(counter.items(), key=lambda kv: kv[1], reverse=True)
-    return sorted_stance[1][0]
+    if sorted_stance[0][1] == 0:
+        return -1
+    return sorted_stance[0][0]
 
 def get_majority_orig(opinions, weights):
     counter = {-1:0,1:0,2:0,2:0,3:0,4:0,5:0}
@@ -255,6 +271,33 @@ def get_majority_orig(opinions, weights):
         #    print('YEAL MINOROTY')
         #    exit(1)
         #return opinion_yael
+
+    return sorted_stance[0][0]
+
+
+def plurality(opinions):
+    counter = {1:0,2:0,3:0,4:0,5:0}
+    for classifier, opinion in opinions.items():
+        if opinion > 0:
+            counter[opinion] += 1
+    sorted_stance = sorted(counter.items(), key=lambda kv: kv[1], reverse=True)
+    if sorted_stance[0][1] == 0:
+        return -1
+    return sorted_stance[0][0]
+
+
+def get_majority(opinions, weights):
+    counter = {-1: 0, 1: 0, 2: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    for classifier, opinion in opinions.items():
+        opinion = -1 if opinion == -2 else opinion
+        counter[opinion] += weights[classifier]
+    sorted_stance = sorted(counter.items(), key=lambda kv: kv[1], reverse=True)
+
+    if sorted_stance[0][1] == sorted_stance[1][1]:
+        if sorted_stance[0][0] > sorted_stance[1][0]:
+            return sorted_stance[0][0]
+        else:
+            return sorted_stance[1][0]
 
     return sorted_stance[0][0]
 
@@ -489,21 +532,23 @@ def merge_all_ijcai_ecai():
         exclude_ir=False)
 
 def merge_all_ijcai():
-    classifier_folders = {'Audrie':'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\pos\\Audrie\\annotated',
-                          'Nechama': 'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\\pos\\Nechama\\annotated',
-                          'Sapir':'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\\pos\\Sapir\\annotated',
+    classifier_folders = {'Audrie':'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\pos_neg\\Audrie\\annotated',
+                         # 'Nechama': 'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\\pos_neg\\Nechama\\annotated',
+                          'Sapir':'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\\pos_neg\\Sapir\\annotated',
                           'Sigal': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Sigal\\all',
                           'Irit': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Irit\\all',
+                          'Chavi2': 'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\\Chavi\\all',
                           'Shlomi': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Shlomi\\to_classify_20_sample2',
                           'Chavi': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Chavi\\all',
                           'Yael': 'C:\\research\\falseMedicalClaims\\ECAI\\examples\\classified\\Yael\\sample1_and_2\\',
                           'Irit2': 'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\\irit\\papers\\',
-                          'Sigal2': 'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\\sigal\\papers\\'
+                   #      'Sigal2': 'C:\\research\\falseMedicalClaims\\IJCAI\\annotators\\sigal\\papers\\',
+                          'Yael2':'C:\\research\\falseMedicalClaims\IJCAI\\annotators\\Yael\\papers_is_Yael'
                           }
     merge_classifiers_by_query_file(
         queries_file='C:\\research\\falseMedicalClaims\\IJCAI\\query files\\queries only.csv',
         classifier_folders=classifier_folders,
-        output_folder='C:\\research\\falseMedicalClaims\\IJCAI\\merged_annotations\\second\\',
+        output_folder='C:\\research\\falseMedicalClaims\\IJCAI\\merged_annotations\\ns\\',
         exclude_ir=False)
 
 def main():

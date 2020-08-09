@@ -229,6 +229,8 @@ def get_all_opinions(url, classifications):
         opinions[classifier] = opinion
     return opinions
 
+
+
 def get_majority(opinions, weights):
     counter = {-1:0,1:0,2:0,2:0,3:0,4:0,5:0}
     for classifier, opinion in opinions.items():
@@ -494,7 +496,7 @@ def merge_all_ijcai():
     merge_classifiers_by_query_file(
         queries_file='C:\\research\\falseMedicalClaims\\IJCAI\\query files\\queries only.csv',
         classifier_folders=classifier_folders,
-        output_folder='C:\\research\\falseMedicalClaims\\IJCAI\\merged_annotations\\all\\',
+        output_folder='C:\\research\\falseMedicalClaims\\IJCAI\\merged_annotations\\exp\\',
         exclude_ir=False)
 
 def main():

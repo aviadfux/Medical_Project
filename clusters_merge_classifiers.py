@@ -32,7 +32,7 @@ def get_url_to_clusters(examples):
     assert (len(centroid_urls) == 6)
     centroid_features = [list(x[1].values()) for x in centroids.values()]
     centroid_arr = numpy.array(centroid_features)
-    X= pandas.DataFrame.from_dict(group_features.values()).to_numpy()
+    X = pandas.DataFrame.from_dict(group_features.values()).to_numpy()
     kmeans = KMeans(n_clusters=6, init=centroid_arr).fit(X)
     clusters = {0:[],1:[],2:[],3:[],4:[],5:[]}
     labels = {}
